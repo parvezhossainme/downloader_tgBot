@@ -41,6 +41,8 @@ cd sosmed-downloader-typescript
 npm install
 ```
 
+This project uses Puppeteer with a local Chrome/Chromium binary. If your machine does not already have one installed, set `PUPPETEER_EXECUTABLE_PATH` before running the app.
+
 3. **Environment Configuration**
 
 Create `.env` file in `src/config/` directory:
@@ -63,26 +65,32 @@ npm run build
 ### Development Mode
 
 ```bash
-# Run API server only
+# Run API server and Telegram bot together
 npm run dev
+
+# Run API server only
+npm run dev:api
 
 # Run Telegram bot only  
 npm run dev:bot
 
-# Run both API server and bot
+# Alias for running both API server and bot
 npm run dev:all
 ```
 
 ### Production Mode
 
 ```bash
-# Run API server only
+# Run API server and Telegram bot together
 npm run start
+
+# Run API server only
+npm run start:api
 
 # Run Telegram bot only
 npm run start:bot
 
-# Run both API server and bot
+# Alias for running both API server and bot
 npm run start:all
 ```
 
@@ -208,20 +216,10 @@ src/
 
 This project is licensed under the MIT License.
 
-## 🐛 Bug Reports
-
-Report bugs via [GitHub Issues](https://github.com/MbotixTech/downloader-bot/issues) or contact [@xiaogarpu](https://t.me/xiaogarpu) on Telegram.
-
 ## 💖 Support
 
 If you find this project helpful, consider supporting the developer:
 
-- ☕ [Buy me a coffee](https://saweria.co/MbotixTech)
-
 ## ⚠️ Disclaimer
 
 This tool is for educational and personal use only. Please respect the terms of service of the respective social media platforms and ensure you have the right to download the content.
-
----
-
-Made with ❤️ by MbotixTech

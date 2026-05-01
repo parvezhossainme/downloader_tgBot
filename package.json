@@ -4,12 +4,14 @@
   "type": "module",
   "scripts": {
     "build": "tsc",
-    "dev": "tsx watch src/index.ts",
+    "dev": "concurrently \"tsx watch src/index.ts\" \"tsx watch src/bot/bot.ts\"",
+    "dev:api": "tsx watch src/index.ts",
     "dev:bot": "tsx watch src/bot/bot.ts",
-    "dev:all": "concurrently \"npm run dev\" \"npm run dev:bot\"",
-    "start": "node dist/index.js",
+    "dev:all": "npm run dev",
+    "start": "concurrently \"node dist/index.js\" \"node dist/bot/bot.js\"",
+    "start:api": "node dist/index.js",
     "start:bot": "node dist/bot/bot.js",
-    "start:all": "concurrently \"npm run start\" \"npm run start:bot\"",
+    "start:all": "npm run start",
     "clean": "rimraf dist",
     "prebuild": "npm run clean"
   },

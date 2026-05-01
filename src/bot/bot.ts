@@ -1,4 +1,3 @@
-import dotenv from 'dotenv';
 import { Telegraf, Markup } from 'telegraf';
 import axios from 'axios';
 import fs from 'fs';
@@ -6,21 +5,16 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { dirname } from 'path';
 import { finished } from 'stream/promises';
+import { config } from '../config/env.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
 const isDev = __dirname.includes('src');
-const envPath = isDev 
-  ? path.join(__dirname, '..', 'config', '.env')
-  : path.join(__dirname, '..', '..', 'src', 'config', '.env');
 
-dotenv.config({ path: envPath });
-
-const bot = new Telegraf(process.env.BOT_TOKEN!);
-const VPS_API_URL = process.env.VPS_API_URL!;
-const ADMINS: number[] = process.env.ADMINS ? 
-  process.env.ADMINS.split(',').map(id => parseInt(id)) : [];
+const bot = new Telegraf(config.BOT_TOKEN);
+const VPS_API_URL = config.VPS_API_URL;
+const ADMINS = config.ADMINS;
 
 const usersFilePath = isDev
   ? path.join(__dirname, '..', 'config', 'users.json')
@@ -39,7 +33,7 @@ if (fs.existsSync(usersFilePath)) {
     userIds.forEach(id => activeUsers.add(id));
     console.log(`✅ Loaded ${userIds.length} active users from users.json`);
   } catch (e) {
-    console.error('❌ Gagal load users.json:', (e as Error).message);
+    console.error('❌ Failed to load users.json:', (e as Error).message);
   }
 }
 
@@ -51,7 +45,7 @@ function saveUsers(): void {
 let botInfo: any = null;
 bot.telegram.getMe().then((info) => {
   botInfo = info;
-  console.log(`🤖 Bot jalan sebagai @${info.username}`);
+  console.log(`🤖 Bot running as @${info.username}`);
 });
 
 bot.start(async (ctx) => {
@@ -64,36 +58,7 @@ bot.start(async (ctx) => {
     saveUsers();
   }
 
-  try {
-    const photos = await ctx.telegram.getUserProfilePhotos(botInfo.id, 0, 1);
-
-    const baseButtons = [
-      [{ text: '🎵 TikTok — Download video & slide foto tanpa watermark', callback_data: 'select_tiktok' }],
-      [{ text: '📘 Facebook — Download reels & video', callback_data: 'select_facebook' }],
-      [{ text: '📸 Instagram — Download reels, story, feed', callback_data: 'select_instagram' }],
-      [{ text: '🐦 Twitter/X — Download video dari Twitter', callback_data: 'select_twitter' }],
-      [{ text: '🚧 Doodstream — Coming Soon Feature', callback_data: 'select_doodstream' }]
-    ];
-
-    if (ADMINS.includes(ctx.from!.id)) {
-      baseButtons.push([{ text: '🚀 Broadcast ke semua user', callback_data: 'admin_broadcast' }]);
-    }
-
-    if (photos.total_count > 0) {
-      const file_id = photos.photos[0][0].file_id;
-      const msg = await ctx.replyWithPhoto(file_id, {
-        caption: `👋 Hola ${fullName}!\n\n📥 Pilih jenis downloader:`,
-        reply_markup: { inline_keyboard: baseButtons }
-      });
-      lastBotMessage.set(ctx.from!.id, msg.message_id);
-    } else {
-      const msg = await ctx.reply(`👋 Hola ${fullName}!\n\n📥 Pilih jenis downloader:`, Markup.inlineKeyboard(baseButtons));
-      lastBotMessage.set(ctx.from!.id, msg.message_id);
-    }
-  } catch (e) {
-    console.error('❌ Gagal ambil foto profil:', (e as Error).message);
-    await ctx.reply('❌ Error ambil foto profil.');
-  }
+  await sendMainMenu(ctx, fullName);
 });
 
 bot.action(/select_(.+)/, async (ctx) => {
@@ -103,7 +68,19 @@ bot.action(/select_(.+)/, async (ctx) => {
   userState.set(ctx.from!.id, type);
 
   const fullName = [ctx.from?.first_name, ctx.from?.last_name].filter(Boolean).join(' ') || 'User';
-  const msg = await ctx.reply(`📥 Downloader dipilih: ${type.toUpperCase()}\n\n${fullName}, silakan kirim link kamu sekarang.`);
+  const msg = await ctx.reply(`📥 ${type.toUpperCase()} বেছে নেওয়া হয়েছে\n\n${fullName}, এখন আপনার লিংক পাঠান।`);
+  lastBotMessage.set(ctx.from!.id, msg.message_id);
+
+  await ctx.answerCbQuery();
+});
+
+bot.action('select_auto', async (ctx) => {
+  if (ctx.chat?.type !== 'private') return;
+
+  userState.set(ctx.from!.id, 'auto');
+
+  const fullName = [ctx.from?.first_name, ctx.from?.last_name].filter(Boolean).join(' ') || 'User';
+  const msg = await ctx.reply(`🤖 Auto detect on\n\n${fullName}, send any supported link and I will detect it automatically.`);
   lastBotMessage.set(ctx.from!.id, msg.message_id);
 
   await ctx.answerCbQuery();
@@ -112,18 +89,40 @@ bot.action(/select_(.+)/, async (ctx) => {
 bot.action('select_doodstream', async (ctx) => {
   if (ctx.chat?.type !== 'private') return;
 
-  await ctx.answerCbQuery('❌ Fitur belum tersedia, tunggu update ya!', { show_alert: true });
+  await ctx.answerCbQuery('❌ ফিচারটি এখনো প্রস্তুত নয়, আপডেটের জন্য অপেক্ষা করুন!', { show_alert: true });
 });
 
 bot.action('admin_broadcast', async (ctx) => {
   if (ctx.chat?.type !== 'private') return;
 
   if (!ADMINS.includes(ctx.from!.id)) {
-    return ctx.answerCbQuery('❌ Kamu tidak punya akses broadcast.', { show_alert: true });
+    return ctx.answerCbQuery('❌ আপনার ব্রডকাস্টের অনুমতি নেই।', { show_alert: true });
   }
-  const sent = await ctx.reply('🚀 Silakan kirim pesan yang mau di-broadcast (text, gambar, atau video).');
+  const sent = await ctx.reply('🚀 ব্রডকাস্ট করার জন্য টেক্সট, ছবি বা ভিডিও পাঠান।');
   pendingBroadcast.set(ctx.from!.id, { waiting: true, messageId: sent.message_id });
   await ctx.answerCbQuery();
+});
+
+bot.command('help', async (ctx) => {
+  if (ctx.chat?.type !== 'private') return;
+  await ctx.reply(buildHelpMessage(), { parse_mode: 'HTML' });
+});
+
+bot.command('about', async (ctx) => {
+  if (ctx.chat?.type !== 'private') return;
+  await ctx.reply(buildAboutMessage(), { parse_mode: 'HTML' });
+});
+
+bot.command('menu', async (ctx) => {
+  if (ctx.chat?.type !== 'private') return;
+
+  const fullName = [ctx.from?.first_name, ctx.from?.last_name].filter(Boolean).join(' ') || 'User';
+  await sendMainMenu(ctx, fullName);
+});
+
+bot.command('settings', async (ctx) => {
+  if (ctx.chat?.type !== 'private') return;
+  await ctx.reply('⚙️ Settings is not available yet. Use /start for the main menu.\n⚙️ সেটিংস এখনো পাওয়া যায়নি। মেইন মেনুর জন্য /start ব্যবহার করুন।');
 });
 
 function detectPlatform(text: string): string | null {
@@ -151,6 +150,92 @@ function extractUrl(text: string): string | null {
   const urlRegex = /(https?:\/\/[^\s]+)/g;
   const matches = text.match(urlRegex);
   return matches ? matches[0] : text.trim();
+}
+
+function buildHelpMessage(): string {
+  return [
+    '📚 <b>Help</b>',
+    '',
+    '/start - menu',
+    '/help - help',
+    '/about - info',
+    '/menu - menu',
+    '',
+    'TikTok, Facebook, Instagram, Twitter/X',
+    'প্ল্যাটফর্ম বেছে নিয়ে লিংক পাঠান।'
+  ].join('\n');
+}
+
+function buildAboutMessage(): string {
+  return [
+    'ℹ️ <b>About</b>',
+    '',
+    'Social video downloader for Telegram.',
+    'Telegram-এর জন্য সোশ্যাল ভিডিও ডাউনলোডার।'
+  ].join('\n');
+}
+
+function getQuickReply(text: string): string | null {
+  const normalizedText = text.trim().toLowerCase();
+
+  if (['hi', 'hello', 'hey', 'হাই', 'হ্যালো'].includes(normalizedText)) {
+    return '👋 Hello! / হ্যালো!';
+  }
+
+  if (['help', '/help', 'সাহায্য', 'help me'].includes(normalizedText)) {
+    return buildHelpMessage();
+  }
+
+  if (['about', '/about', 'info', 'তথ্য'].includes(normalizedText)) {
+    return buildAboutMessage();
+  }
+
+  if (['menu', 'settings', '/menu', '/settings', 'মেনু', 'সেটিংস'].includes(normalizedText)) {
+    return '📌 Use /start. / মেনুর জন্য /start';
+  }
+
+  if (['thanks', 'thank you', 'ধন্যবাদ', 'thx'].includes(normalizedText)) {
+    return '🙏 Welcome! / স্বাগতম!';
+  }
+
+  return null;
+}
+
+async function sendMainMenu(ctx: any, fullName: string) {
+  const baseButtons = [
+    [{ text: '🤖 Auto Detect — লিংক দেখে টাইপ ধরবে', callback_data: 'select_auto' }],
+    [{ text: '🎵 TikTok — ওয়াটারমার্ক ছাড়া ভিডিও ও স্লাইড ডাউনলোড', callback_data: 'select_tiktok' }],
+    [{ text: '📘 Facebook — রিলস ও ভিডিও ডাউনলোড', callback_data: 'select_facebook' }],
+    [{ text: '📸 Instagram — রিলস, স্টোরি, ফিড ডাউনলোড', callback_data: 'select_instagram' }],
+    [{ text: '🐦 Twitter/X — টুইটার ভিডিও ডাউনলোড', callback_data: 'select_twitter' }],
+    [{ text: '🚧 Doodstream — শিগগিরই আসছে', callback_data: 'select_doodstream' }]
+  ];
+
+  if (ADMINS.includes(ctx.from!.id)) {
+    baseButtons.push([{ text: '🚀 সব ইউজারে ব্রডকাস্ট', callback_data: 'admin_broadcast' }]);
+  }
+
+  const menuCaption = `👋 হ্যালো ${fullName}!\n\n📥 প্ল্যাটফর্ম বেছে নিন:\n/help • /about • /menu`;
+
+  if (botInfo) {
+    try {
+      const photos = await ctx.telegram.getUserProfilePhotos(botInfo.id, 0, 1);
+      if (photos.total_count > 0) {
+        const file_id = photos.photos[0][0].file_id;
+        const msg = await ctx.replyWithPhoto(file_id, {
+          caption: menuCaption,
+          reply_markup: { inline_keyboard: baseButtons }
+        });
+        lastBotMessage.set(ctx.from!.id, msg.message_id);
+        return;
+      }
+    } catch (error) {
+      console.error('❌ Failed to send main menu:', (error as Error).message);
+    }
+  }
+
+  const msg = await ctx.reply(menuCaption, Markup.inlineKeyboard(baseButtons));
+  lastBotMessage.set(ctx.from!.id, msg.message_id);
 }
 
 bot.on(['text', 'photo', 'video'], async (ctx) => {
@@ -185,14 +270,14 @@ bot.on(['text', 'photo', 'video'], async (ctx) => {
         try {
           await ctx.replyWithMediaGroup(mediaGroup);
         } catch (err) {
-          console.error(`❌ Error sending slide media group:`, err);
+          console.error(`❌ Failed to send slide media group:`, err);
           for (let i = 0; i < images.length; i++) {
             try {
               await ctx.replyWithPhoto({ url: images[i] }, {
                 caption: i === 0 ? `📸 TikTok Slide ${i + 1}/${images.length}\n📌 ${response.data.title || 'TikTok Slide'}` : undefined
               });
             } catch (individualErr) {
-              console.error(`❌ Error sending slide ${i + 1}:`, individualErr);
+              console.error(`❌ Failed to send slide ${i + 1}:`, individualErr);
             }
           }
         }
@@ -222,16 +307,22 @@ bot.on(['text', 'photo', 'video'], async (ctx) => {
         await ctx.replyWithVideo({ url: videoUrl });
       }
     } catch (err) {
-      console.error('❌ Error di group downloader:', err);
+      console.error('❌ Group downloader error:', err);
     }
     return;
+  }
+
+  const incomingText = ('text' in ctx.message ? ctx.message.text : '') || '';
+    const quickReply = getQuickReply(incomingText);
+    if (quickReply) {
+      return ctx.reply(quickReply, { parse_mode: 'HTML' });
   }
 
   const pending = pendingBroadcast.get(ctx.from!.id);
   if (pending) {
     pendingBroadcast.delete(ctx.from!.id);
 
-    const broadcastLoading = await ctx.reply('⏳ Sedang broadcast ke semua user...');
+    const broadcastLoading = await ctx.reply('⏳ সব ইউজারে ব্রডকাস্ট চলছে...');
 
     let successCount = 0;
     let failedUsers: any[] = [];
@@ -317,14 +408,14 @@ bot.on(['text', 'photo', 'video'], async (ctx) => {
               username: (chat as any).username ? `@${(chat as any).username}` : '(no username)',
               fullName: [(chat as any).first_name, (chat as any).last_name].filter(Boolean).join(' ') || '(no full name)'
             });
-            console.log(`❌ Gagal kirim ke ${userId} (${(chat as any).username || 'no username'}) - Error: ${(error as Error).message}`);
+            console.log(`❌ Failed to send to ${userId} (${(chat as any).username || 'no username'}) - Error: ${(error as Error).message}`);
           } catch (e) {
             failedUsers.push({
               id: userId,
               username: '(unknown)',
               fullName: '(unknown)'
             });
-            console.log(`❌ Gagal kirim ke ${userId} (unknown) - Error: ${(error as Error).message}`);
+            console.log(`❌ Failed to send to ${userId} (unknown) - Error: ${(error as Error).message}`);
           }
         }
       })();
@@ -337,14 +428,14 @@ bot.on(['text', 'photo', 'video'], async (ctx) => {
     try { await ctx.telegram.deleteMessage(ctx.chat!.id, pending.messageId); } catch {}
     try { await ctx.telegram.deleteMessage(ctx.chat!.id, broadcastLoading.message_id); } catch {}
 
-    let report = `✅ <b>Broadcast Selesai!</b>\n\n`;
-    report += `👤 <b>Total User:</b> ${activeUsers.size}\n`;
-    report += `📬 <b>Berhasil Dikirim:</b> ${successCount}\n`;
-    report += `🚫 <b>Gagal Dikirim:</b> ${failedUsers.length}\n\n`;
-    report += `🕒 Laporan ini akan otomatis dihapus dalam 5 menit.`;
+    let report = `✅ <b>ব্রডকাস্ট শেষ!</b>\n\n`;
+    report += `👤 <b>মোট ইউজার:</b> ${activeUsers.size}\n`;
+    report += `📬 <b>সফলভাবে পাঠানো হয়েছে:</b> ${successCount}\n`;
+    report += `🚫 <b>ব্যর্থ হয়েছে:</b> ${failedUsers.length}\n\n`;
+    report += `🕒 এই রিপোর্ট ৫ মিনিট পর স্বয়ংক্রিয়ভাবে মুছে যাবে.`;
 
     if (failedUsers.length > 0) {
-      report += `\nDaftar Gagal:\n`;
+      report += `\nব্যর্থের তালিকা:\n`;
       failedUsers.forEach(user => {
         report += `- ${user.username} | ${user.id} | ${user.fullName}\n`;
       });
@@ -359,14 +450,14 @@ bot.on(['text', 'photo', 'video'], async (ctx) => {
     return;
   }
 
-  const type = userState.get(ctx.from!.id);
+  let type = userState.get(ctx.from!.id);
   const link = ('text' in ctx.message ? ctx.message.text?.trim() : '') || '';
   const fullName = [ctx.from?.first_name, ctx.from?.last_name].filter(Boolean).join(' ') || 'User';
 
   try {
     await ctx.deleteMessage(ctx.message.message_id);
   } catch (e) {
-    console.warn('Gagal hapus pesan user:', (e as Error).message);
+    console.warn('Failed to delete user message:', (e as Error).message);
   }
 
   const lastMsgId = lastBotMessage.get(ctx.from!.id);
@@ -374,16 +465,23 @@ bot.on(['text', 'photo', 'video'], async (ctx) => {
     try {
       await ctx.telegram.deleteMessage(ctx.chat!.id, lastMsgId);
     } catch (e) {
-      console.warn('Gagal hapus pesan instruksi:', (e as Error).message);
+      console.warn('Failed to delete instruction message:', (e as Error).message);
     }
     lastBotMessage.delete(ctx.from!.id);
   }
 
-  if (!type) {
-    return ctx.reply(`📌 ${fullName}, silakan pilih tipe downloader dulu dengan /start`);
+  if (!type || type === 'auto') {
+    const detectedType = detectPlatform(link);
+
+    if (detectedType) {
+      type = detectedType;
+      userState.set(ctx.from!.id, detectedType);
+    } else {
+      return ctx.reply(`📌 ${fullName}, কোনো supported link দিন বা Auto Detect বেছে নিন।`);
+    }
   }
 
-  const processingMessage = await ctx.reply(`⏳ ${fullName} sedang memproses video kamu...`);
+  const processingMessage = await ctx.reply(`⏳ ${fullName}, আপনার ভিডিও প্রক্রিয়া করা হচ্ছে...`);
 
   try {
     let apiUrl = '';
@@ -394,7 +492,7 @@ bot.on(['text', 'photo', 'video'], async (ctx) => {
     //if (type === 'doodstream') apiUrl = `${VPS_API_URL}/api/doodstream?url=${encodeURIComponent(link)}`;
 
     const response = await axios.get(apiUrl, { timeout: 60000 });
-    const title = response.data.title || 'Mbotix Sosmed Downloader';
+    const title = response.data.title || 'PHME সোশ্যাল মিডিয়া ডাউনলোডার';
     
     if (type === 'tiktok' && response.data.type === 'image' && response.data.images) {
       const images = response.data.images;
@@ -402,30 +500,30 @@ bot.on(['text', 'photo', 'video'], async (ctx) => {
       const mediaGroup = images.map((imageUrl, index) => ({
         type: 'photo' as const,
         media: imageUrl,
-        caption: index === 0 ? `📸 TikTok Slide (${images.length} foto)\n📌 Judul: ${title}` : undefined
+        caption: index === 0 ? `📸 TikTok স্লাইড (${images.length}টি ছবি)\n📌 শিরোনাম: ${title}` : undefined
       }));
       
       try {
         await ctx.replyWithMediaGroup(mediaGroup);
         
         const buttons = Markup.inlineKeyboard([
-          [Markup.button.url('☕ Support Dev', 'https://saweria.co/MbotixTech')],
-          [Markup.button.url('⚠️ Report Bug', 'https://t.me/xiaogarpu')]
+          [Markup.button.url('☕ ডেভেলপারকে সাপোর্ট করুন', 'https://parvezhossainme.com')],
+          [Markup.button.url('⚠️ বাগ রিপোর্ট করুন', 'https://t.me/parvezhossainme')]
         ]);
         
-        await ctx.reply('☕ Dukung bot ini atau laporkan bug:', buttons);
+        await ctx.reply('☕ এই বটকে সাপোর্ট করুন বা বাগ রিপোর্ট করুন:', buttons);
         
       } catch (err) {
-        console.error(`❌ Error sending slide media group:`, err);
+        console.error(`❌ Failed to send slide media group:`, err);
         for (let i = 0; i < images.length; i++) {
           try {
             const caption = i === 0 ? 
-              `📸 TikTok Slide ${i + 1}/${images.length}\n📌 Judul: ${title}` : 
-              `📸 TikTok Slide ${i + 1}/${images.length}`;
+              `📸 TikTok স্লাইড ${i + 1}/${images.length}\n📌 শিরোনাম: ${title}` : 
+              `📸 TikTok স্লাইড ${i + 1}/${images.length}`;
             
             await ctx.replyWithPhoto({ url: images[i] }, { caption });
           } catch (individualErr) {
-            console.error(`❌ Error sending slide ${i + 1}:`, individualErr);
+            console.error(`❌ Failed to send slide ${i + 1}:`, individualErr);
           }
         }
       }
@@ -433,7 +531,7 @@ bot.on(['text', 'photo', 'video'], async (ctx) => {
       lastAction.set(ctx.from!.id, { type, link, title });
       await ctx.telegram.deleteMessage(ctx.chat!.id, processingMessage.message_id);
       
-      const done = await ctx.reply('✅ Slide foto berhasil dikirim!');
+      const done = await ctx.reply('✅ স্লাইড ছবি পাঠানো হয়েছে!');
       setTimeout(() => {
         ctx.telegram.deleteMessage(ctx.chat!.id, done.message_id).catch(() => {});
       }, 4000);
@@ -445,14 +543,14 @@ bot.on(['text', 'photo', 'video'], async (ctx) => {
     const videoUrl = response.data.video_url || response.data.download_url;
 
     if (!videoUrl) {
-      await ctx.telegram.editMessageText(ctx.chat!.id, processingMessage.message_id, undefined, `❌ Gagal mengambil video.`);
+      await ctx.telegram.editMessageText(ctx.chat!.id, processingMessage.message_id, undefined, `❌ ভিডিও পাওয়া যায়নি।`);
       return;
     }
 
-    const caption = `🎬 Sumber: ${type.toUpperCase()}\n📌 Judul: ${title}\n\n☕ Dukung bot ini atau laporkan bug:`;
+    const caption = `🎬 উৎস: ${type.toUpperCase()}\n📌 শিরোনাম: ${title}\n\n☕ এই বটকে সাপোর্ট করুন বা বাগ রিপোর্ট করুন:`;
     const buttons = Markup.inlineKeyboard([
-      [Markup.button.url('☕ Support Dev', 'https://saweria.co/MbotixTech')],
-      [Markup.button.url('⚠️ Report Bug', 'https://t.me/xiaogarpu')]
+      [Markup.button.url('☕ ডেভেলপারকে সাপোর্ট করুন', 'https://parvezhossainme.com')],
+      [Markup.button.url('⚠️ বাগ রিপোর্ট করুন', 'https://t.me/parvezhossainme')]
     ]);
 
     if (type === 'facebook') {
@@ -479,17 +577,17 @@ bot.on(['text', 'photo', 'video'], async (ctx) => {
 
     await ctx.telegram.deleteMessage(ctx.chat!.id, processingMessage.message_id);
 
-    const done = await ctx.reply('✅ Video berhasil dikirim!');
+    const done = await ctx.reply('✅ ভিডিও পাঠানো হয়েছে!');
     setTimeout(() => {
       ctx.telegram.deleteMessage(ctx.chat!.id, done.message_id).catch(() => {});
     }, 4000);
 
     userState.delete(ctx.from!.id);
   } catch (err) {
-    console.error('❌ Error di downloader:', err);
-    await ctx.telegram.editMessageText(ctx.chat!.id, processingMessage.message_id, undefined, `❌ Terjadi kesalahan saat mengambil video.`);
+    console.error('❌ Downloader error:', err);
+    await ctx.telegram.editMessageText(ctx.chat!.id, processingMessage.message_id, undefined, `❌ ভিডিও নিতে গিয়ে সমস্যা হয়েছে।`);
   }
 });
 
 bot.launch();
-console.log('🤖 Bot Telegram berjalan...');
+  console.log('🤖 Telegram bot started...');

@@ -1,5 +1,6 @@
 import puppeteer, { Browser, Page, Frame } from "puppeteer";
 import { DoodstreamResponse } from "../types/api.js";
+import { resolveBrowserExecutablePath } from "../config/browser.js";
 
 export async function scrapeSingleDoodstreamVideo(url: string): Promise<DoodstreamResponse> {
   let browser: Browser | undefined;
@@ -10,6 +11,7 @@ export async function scrapeSingleDoodstreamVideo(url: string): Promise<Doodstre
 
     browser = await puppeteer.launch({
       headless: "new",
+      executablePath: resolveBrowserExecutablePath(),
       args: ["--no-sandbox", "--disable-setuid-sandbox"],
     });
 

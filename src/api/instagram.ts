@@ -1,5 +1,6 @@
 import puppeteer, { Browser, Page } from "puppeteer";
 import { InstagramResponse } from "../types/api.js";
+import { resolveBrowserExecutablePath } from "../config/browser.js";
 
 export async function getInstagramVideo(url: string): Promise<InstagramResponse> {
   let browser: Browser | undefined;
@@ -7,6 +8,7 @@ export async function getInstagramVideo(url: string): Promise<InstagramResponse>
   try {
     browser = await puppeteer.launch({
       headless: "new", 
+      executablePath: resolveBrowserExecutablePath(),
       args: ["--no-sandbox", "--disable-setuid-sandbox"]
     });
 

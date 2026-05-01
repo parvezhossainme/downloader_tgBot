@@ -1,5 +1,6 @@
 import puppeteer, { Browser, Page } from "puppeteer";
 import { TwitterResponse, QualityOption } from "../types/api.js";
+import { resolveBrowserExecutablePath } from "../config/browser.js";
 
 interface TwitterScrapingResult {
   links: QualityOption[];
@@ -13,6 +14,7 @@ export async function getTwitterVideo(url: string): Promise<TwitterResponse> {
   try {
     browser = await puppeteer.launch({
       headless: "new",
+      executablePath: resolveBrowserExecutablePath(),
       args: [
         '--no-sandbox',
         '--disable-setuid-sandbox',

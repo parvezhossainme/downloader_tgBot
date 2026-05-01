@@ -27,7 +27,7 @@ app.get("/api/facebook", async (req: Request<{}, {}, {}, DownloadRequest>, res: 
     res.json({
       success: true,
       video_url: result.video_url,
-      title: "Mbotix Downloader"
+      title: "PHME Downloader"
     });
   } catch (error) {
     console.error("❌ Error di /api/facebook:", error);
