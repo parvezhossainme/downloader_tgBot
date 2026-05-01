@@ -470,15 +470,13 @@ bot.on(['text', 'photo', 'video'], async (ctx) => {
     lastBotMessage.delete(ctx.from!.id);
   }
 
-  if (!type || type === 'auto') {
-    const detectedType = detectPlatform(link);
+  const detectedType = detectPlatform(link);
 
-    if (detectedType) {
-      type = detectedType;
-      userState.set(ctx.from!.id, detectedType);
-    } else {
-      return ctx.reply(`📌 ${fullName}, কোনো supported link দিন বা Auto Detect বেছে নিন।`);
-    }
+  if (detectedType) {
+    type = detectedType;
+    userState.set(ctx.from!.id, detectedType);
+  } else if (!type || type === 'auto') {
+    return ctx.reply(`📌 ${fullName}, কোনো supported link দিন বা Auto Detect বেছে নিন।`);
   }
 
   const processingMessage = await ctx.reply(`⏳ ${fullName}, আপনার ভিডিও প্রক্রিয়া করা হচ্ছে...`);
