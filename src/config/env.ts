@@ -1,6 +1,17 @@
 import dotenv from 'dotenv';
+import path from 'path';
+import { fileURLToPath } from 'url';
+import { dirname } from 'path';
 
-dotenv.config();
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+
+const isDev = __dirname.includes('src');
+const envPath = isDev 
+  ? path.join(__dirname, '.env')
+  : path.join(__dirname, '..', '..', 'src', 'config', '.env');
+
+dotenv.config({ path: envPath });
 
 export interface EnvConfig {
   BOT_TOKEN: string;
@@ -10,62 +21,42 @@ export interface EnvConfig {
 }
 
 function getEnvConfig(): EnvConfig {
-  if (!process.env.BOT_TOKEN) {
-    throw new Error('Missing BOT_TOKEN');
+  const requiredEnvVars = ['BOT_TOKEN'];
+  
+  for (const envVar of requiredEnvVars) {
+    if (!process.env[envVar]) {
+      throw new Error(`Missing required environment variable: ${envVar}`);
+    }
   }
 
   const port = parseInt(process.env.PORT || '3000');
+  const vpsApiUrl = normalizeApiUrl(process.env.VPS_API_URL, port);
 
   return {
-    BOT_TOKEN: process.env.BOT_TOKEN,
+    BOT_TOKEN: process.env.BOT_TOKEN!,
     PORT: port,
-    VPS_API_URL: process.env.VPS_API_URL || `http://localhost:${port}`,
-    ADMINS: process.env.ADMINS
-      ? process.env.ADMINS.split(',').map(id => parseInt(id.trim()))
-      : []
+    VPS_API_URL: vpsApiUrl,
+    ADMINS: process.env.ADMINS ? 
+      process.env.ADMINS.split(',').map(id => parseInt(id.trim())) : []
   };
 }
 
 export const config = getEnvConfig();
 
-// import dotenv from 'dotenv';
-// import path from 'path';
-// import { fileURLToPath } from 'url';
-// import { dirname } from 'path';
+function normalizeApiUrl(value: string | undefined, port: number): string {
+  const fallbackUrl = `http://localhost:${port}`;
+  const rawUrl = (value || fallbackUrl).trim();
 
-// const __filename = fileURLToPath(import.meta.url);
-// const __dirname = dirname(__filename);
+  try {
+    const url = new URL(rawUrl);
 
-// const isDev = __dirname.includes('src');
-// const envPath = isDev 
-//   ? path.join(__dirname, '.env')
-//   : path.join(__dirname, '..', '..', 'src', 'config', '.env');
+    if ((url.hostname === 'localhost' || url.hostname === '127.0.0.1') && !url.port) {
+      url.port = String(port);
+    }
 
-// dotenv.config({ path: envPath });
-
-// export interface EnvConfig {
-//   BOT_TOKEN: string;
-//   PORT: number;
-//   VPS_API_URL: string;
-//   ADMINS: number[];
-// }
-
-// function getEnvConfig(): EnvConfig {
-//   const requiredEnvVars = ['BOT_TOKEN', 'VPS_API_URL'];
-  
-//   for (const envVar of requiredEnvVars) {
-//     if (!process.env[envVar]) {
-//       throw new Error(`Missing required environment variable: ${envVar}`);
-//     }
-//   }
-
-//   return {
-//     BOT_TOKEN: process.env.BOT_TOKEN!,
-//     PORT: parseInt(process.env.PORT || '3000'),
-//     VPS_API_URL: process.env.VPS_API_URL!,
-//     ADMINS: process.env.ADMINS ? 
-//       process.env.ADMINS.split(',').map(id => parseInt(id.trim())) : []
-//   };
-// }
-
-// export const config = getEnvConfig();
+    url.pathname = url.pathname.replace(/\/+$/, '');
+    return url.toString().replace(/\/$/, '');
+  } catch {
+    throw new Error(`Invalid VPS_API_URL: ${rawUrl}`);
+  }
+}
