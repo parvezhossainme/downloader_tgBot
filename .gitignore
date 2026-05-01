@@ -58,7 +58,7 @@ temp_video.mp4
 *.swp
 *.swo
 
-# OS generated files
+# OS generated files ok
 .DS_Store
 .DS_Store?
 ._*
