@@ -41,7 +41,13 @@ cd sosmed-downloader-typescript
 npm install
 ```
 
-This project uses Puppeteer with a local Chrome/Chromium binary. If your machine does not already have one installed, set `PUPPETEER_EXECUTABLE_PATH` before running the app.
+This project uses Puppeteer's installed Chrome. If Chrome was not downloaded during install, run:
+
+```bash
+npx puppeteer browsers install chrome
+```
+
+You can still override the browser path for production by setting `PUPPETEER_EXECUTABLE_PATH`.
 
 3. **Environment Configuration**
 
